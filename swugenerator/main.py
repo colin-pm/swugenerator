@@ -207,7 +207,7 @@ def main() -> None:
         key, iv = extract_keys(args.encryption_key_file)
 
     artidirs = []
-    artidirs.append(os.getcwd())
+    artidirs.append(Path(os.getcwd()))
     if args.artifactory:
         dirs = args.artifactory.split(",")
         for directory in dirs:

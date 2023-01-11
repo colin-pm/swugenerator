@@ -74,12 +74,12 @@ class SWUGenerator:
                 break
         if not new:
             logging.debug("New artifact  %s", entry["filename"])
-            new = Artifact(entry["filename"])
-            if not new.findfile(self.artifactory):
+            new = Artifact(entry["filename"], self.artifactory)
+            if not new.exists():
                 logging.critical("Artifact %s not found", entry["filename"])
                 sys.exit(22)
 
-            new.newfilename = entry["filename"]
+            new.archived_filename = entry["filename"]
 
             if "compressed" in entry and not self.nocompress:
                 cmp = entry["compressed"]
@@ -89,8 +89,10 @@ class SWUGenerator:
                     logging.critical("Wrong compression algorithm: %s", cmp)
                     sys.exit(1)
 
-                new_path = os.path.join(self.temp.name, new.newfilename) + "." + cmp
-                new.newfilename = new.newfilename + "." + cmp
+                new_path = (
+                    os.path.join(self.temp.name, new.archived_filename) + "." + cmp
+                )
+                new.archived_filename = new.archived_filename + "." + cmp
                 if cmp == "zlib":
                     cmd = [
                         "gzip",
@@ -137,9 +139,10 @@ class SWUGenerator:
                 else:
                     iv = self.generate_iv()
 
-                new.newfilename = new.newfilename + "." + "enc"
-                new_path = os.path.join(self.temp.name, new.newfilename)
-                new.encrypt(new_path, self.aeskey, iv)
+                new.archived_filename = new.archived_filename + "." + "enc"
+                new_path = os.path.join(self.temp.name, new.archived_filename)
+                if not new.encrypt(new_path, self.aeskey, iv):
+                    sys.exit(1)
                 new.fullfilename = new_path
                 # recompute sha256, now for the encrypted file
                 entry["ivt"] = iv
@@ -149,8 +152,8 @@ class SWUGenerator:
         else:
             logging.debug("Artifact  %s already stored", entry["filename"])
 
-        entry["filename"] = new.newfilename
-        entry["sha256"] = new.getsha256()
+        entry["filename"] = new.archived_filename
+        entry["sha256"] = new.get_sha256()
         if "encrypted" in entry:
             entry["ivt"] = new.ivt
 
@@ -181,12 +184,12 @@ class SWUGenerator:
         self.conf = libconf.loads(swdesc)
         self.find_files_in_swdesc(self.conf.software)
 
-        sw = Artifact("sw-description")
-        sw.fullfilename = os.path.join(self.temp.name, sw.filename)
+        sw = Artifact("sw-description", self.artifactory)
+        sw.archived_filename = os.path.join(self.temp.name, sw.filename)
         self.artifacts.append(sw)
         if self.signtool:
-            sig = Artifact("sw-description.sig")
-            sig.fullfilename = os.path.join(self.temp.name, "sw-description.sig")
+            sig = Artifact("sw-description.sig", self.artifactory)
+            sig.archived_filename = os.path.join(self.temp.name, "sw-description.sig")
             self.artifacts.append(sig)
 
         for entry in self.filelist:
@@ -270,12 +273,10 @@ class SWUGenerator:
         self.aeskey = k
         self.aesiv = iv
 
-    def swupdate_get_sha256(self, filename):
-        a = Artifact(filename)
-        return a.getsha256()
+    def swupdate_get_sha256(self, filename: str) -> str:
+        a = Artifact(filename, self.artifactory)
+        return a.get_sha256()
 
-    def swupdate_get_size(self, filename):
-        a = Artifact(filename)
-        if a.findfile(self.artifactory):
-            return str(a.getsize())
-        return "0"
+    def swupdate_get_size(self, filename: str) -> str:
+        a = Artifact(filename, self.artifactory)
+        return str(a.get_size())
